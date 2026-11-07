@@ -16,12 +16,13 @@ def analyze(events, execution_status=None):
     add("network", "Attempted network access (blocked by sandbox)", net)
     add("process", "Spawned other processes", proc)
 
-    if execution_status != "COMPLETED":
-        verdict = "INCONCLUSIVE"
-    elif (env or files) and net:
+    if (env or files) and net:
         verdict = "HIGH"
     elif findings:
         verdict = "MEDIUM"
-    else:
+    elif execution_status == "COMPLETED":
         verdict = "LOW"
+    else:
+        # Incomplete or untrusted run with nothing logged: never call it safe.
+        verdict = "INCONCLUSIVE"
     return {"verdict": verdict, "findings": findings}
