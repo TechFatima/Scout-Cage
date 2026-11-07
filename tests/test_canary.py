@@ -9,11 +9,12 @@ def test_stealer_is_caught():
     assert "file_open" in kinds
     assert "network" in kinds
     assert "EXFIL_BLOCKED" in r["stdout"]
-    a = analyze(r["events"])
+    assert r["execution_status"] == "COMPLETED"
+    a = analyze(r["events"], r["execution_status"])
     assert a["verdict"] == "HIGH"
     assert all(f["evidence"] for f in a["findings"])
 
 
 def test_hello_is_clean():
     r = run_sample("samples/hello.py")
-    assert analyze(r["events"])["verdict"] == "LOW"
+    assert analyze(r["events"], r["execution_status"])["verdict"] == "LOW"

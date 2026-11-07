@@ -4,20 +4,57 @@ IMAGE = "python:3.12-slim"
 MONITOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor.py")
 FAKE_KEY_ID = "AKIACANARY00000EXAMPLE"
 FAKE_SECRET = "canary/FAKE/do-not-use"
+DOCKER_ERROR_MARKERS = (
+    "cannot connect to the docker daemon",
+    "is the docker daemon running",
+    "error response from daemon",
+    "pull access denied",
+    "repository does not exist",
+    "manifest unknown",
+    "no such image",
+    "invalid reference format",
+    "failed to create task",
+    "oci runtime",
+)
 
 
 def _split(stderr, token):
     prefix = "@@SCOUT:" + token + ":"
     events, clean = [], []
+    lifecycle = []
+    malformed = False
     for line in stderr.splitlines():
         if line.startswith(prefix):
             try:
-                events.append(json.loads(line[len(prefix):]))
+                record = json.loads(line[len(prefix):])
             except ValueError:
-                pass
+                malformed = True
+                continue
+            if not isinstance(record, dict):
+                malformed = True
+            elif record.get("type") == "lifecycle":
+                if record.get("kind") and isinstance(record.get("detail"), str):
+                    lifecycle.append(record)
+                else:
+                    malformed = True
+            elif (
+                type(record.get("id")) is int
+                and isinstance(record.get("kind"), str)
+                and isinstance(record.get("detail"), str)
+            ):
+                events.append(record)
+            else:
+                malformed = True
         else:
             clean.append(line)
-    return events, "\n".join(clean)
+    return events, "\n".join(clean), lifecycle, malformed
+
+
+def _is_docker_failure(stderr, exit_code):
+    if exit_code == 125:
+        return True
+    text = (stderr or "").lower()
+    return any(marker in text for marker in DOCKER_ERROR_MARKERS)
 
 
 def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
@@ -64,6 +101,8 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
 
     start = time.time()
     timed_out = False
+    execution_status = "COMPLETED"
+    diagnostic = "Sample completed successfully."
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         stdout, stderr, code = proc.stdout, proc.stderr, proc.returncode
@@ -74,10 +113,32 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
         stderr = "KILLED: time limit exceeded"
         code = -1
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        execution_status = "TIMEOUT"
+        diagnostic = "Execution exceeded the time limit."
+    except OSError:
+        stdout, stderr, code = "", "", -1
+        execution_status = "DOCKER_FAILED"
+        diagnostic = "Docker execution could not be started."
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
-    events, clean_stderr = _split(stderr, token)
+    events, clean_stderr, lifecycle, malformed = _split(stderr, token)
+    lifecycle_kinds = [record["kind"] for record in lifecycle]
+    monitor_complete = lifecycle_kinds == [
+        "monitor_started",
+        "sample_started",
+        "monitor_completed",
+    ]
+    if not timed_out and execution_status == "COMPLETED":
+        if _is_docker_failure(stderr, code):
+            execution_status = "DOCKER_FAILED"
+            diagnostic = "Docker could not start or complete the container."
+        elif malformed or not monitor_complete:
+            execution_status = "MONITOR_FAILED"
+            diagnostic = "Security monitoring did not produce complete telemetry."
+        elif code != 0:
+            execution_status = "EXECUTION_FAILED"
+            diagnostic = "The sample exited unsuccessfully (exit code %d)." % code
     return {
         "container": name,
         "stdout": stdout,
@@ -86,4 +147,7 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
         "exit_code": code,
         "timed_out": timed_out,
         "duration_s": round(time.time() - start, 2),
+        "execution_status": execution_status,
+        "diagnostic": diagnostic,
+        "monitor_lifecycle": lifecycle,
     }

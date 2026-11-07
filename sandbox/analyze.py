@@ -1,4 +1,4 @@
-def analyze(events):
+def analyze(events, execution_status=None):
     findings = []
 
     def add(kind, title, evs):
@@ -16,7 +16,9 @@ def analyze(events):
     add("network", "Attempted network access (blocked by sandbox)", net)
     add("process", "Spawned other processes", proc)
 
-    if (env or files) and net:
+    if execution_status != "COMPLETED":
+        verdict = "INCONCLUSIVE"
+    elif (env or files) and net:
         verdict = "HIGH"
     elif findings:
         verdict = "MEDIUM"

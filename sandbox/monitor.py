@@ -7,6 +7,19 @@ _out = sys.stderr
 _n = [0]
 _busy = [False]
 
+
+def emit_lifecycle(kind, detail):
+    if _busy[0]:
+        return
+    _busy[0] = True
+    try:
+        rec = {"type": "lifecycle", "kind": kind, "detail": detail}
+        _out.write("@@SCOUT:" + TOKEN + ":" + json.dumps(rec) + "\n")
+        _out.flush()
+    finally:
+        _busy[0] = False
+
+
 def emit(kind, detail):
     if _busy[0]:
         return
@@ -59,4 +72,9 @@ def hook(event, args):
 
 sys.addaudithook(hook)
 sys.argv = ["sample.py"]
-runpy.run_path("/sample/sample.py", run_name="__main__")
+emit_lifecycle("monitor_started", "monitor initialized")
+try:
+    emit_lifecycle("sample_started", "sample execution observed")
+    runpy.run_path("/sample/sample.py", run_name="__main__")
+finally:
+    emit_lifecycle("monitor_completed", "monitor finished")

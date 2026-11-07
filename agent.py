@@ -33,11 +33,11 @@ def fallback_report(events, findings):
 
 
 def ask_ai(events, findings):
-    client = OpenAI(
-        base_url="https://api.vultrinference.com/v1",
-        api_key=os.environ["VULTR_INFERENCE_API_KEY"],
-    )
     try:
+        client = OpenAI(
+            base_url="https://api.vultrinference.com/v1",
+            api_key=os.environ["VULTR_INFERENCE_API_KEY"],
+        )
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -56,7 +56,7 @@ def ask_ai(events, findings):
 
 def investigate(path):
     run = run_sample(path)
-    analysis = analyze(run["events"])
+    analysis = analyze(run["events"], run.get("execution_status"))
     injections = scan_injection(path)
     if injections:
         analysis["findings"].append({
@@ -85,6 +85,8 @@ def investigate(path):
         "invalid_citations": sorted(cited - valid),
         "stdout": run["stdout"],
         "timed_out": run["timed_out"],
+        "execution_status": run["execution_status"],
+        "diagnostic": run["diagnostic"],
     }
 
 

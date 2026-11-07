@@ -14,6 +14,7 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--tx)
 button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
 .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-weight:700;color:#000}
 .HIGH{background:var(--hi)}.MEDIUM{background:var(--med)}.LOW{background:var(--lo)}.INCONCLUSIVE{background:var(--mut)}
+.status{display:inline-block;padding:3px 8px;border:1px solid var(--line);border-radius:6px;margin-left:8px}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 tr.hl{background:#26334f}.chip{background:#26334f;border:1px solid var(--acc);color:var(--tx);border-radius:6px;padding:0 6px;margin:0 2px;cursor:pointer;font-size:12px}
 .chip.bad{border-color:var(--hi);background:#3a1d1f}.mut{color:var(--mut)}pre{white-space:pre-wrap;margin:0;font:13px ui-monospace,Consolas,monospace}
@@ -35,7 +36,8 @@ tr.hl{background:#26334f}.chip{background:#26334f;border:1px solid var(--acc);co
 
 <div id="out" style="display:none">
 <div class="card"><b>2. Verdict</b> <span id="verdict" class="badge"></span>
-<span class="mut" id="meta"></span><div id="findings"></div></div>
+<span id="execution-status" class="status"></span><span class="mut" id="meta"></span>
+<div id="diagnostic" class="mut"></div><div id="findings"></div></div>
 <div class="card"><b>3. Evidence log</b> <span class="mut">(what the sample actually did)</span>
 <table><thead><tr><th>#</th><th>Kind</th><th>Detail</th></tr></thead><tbody id="events"></tbody></table></div>
 <div class="card"><b>4. AI analyst report</b> <span class="mut">(every [#n] is checked against the log)</span>
@@ -57,21 +59,28 @@ const r=document.querySelector('#events tr[data-id="'+id+'"]');if(r)r.scrollInto
 function chips(ids,valid){const w=document.createElement("span");ids.forEach(i=>{const c=el("span","#"+i,"chip"+(valid.has(i)?"":" bad"));c.onclick=()=>hl(i);w.appendChild(c)});return w}
 function render(d){
 $("out").style.display="block";
-const v=$("verdict");v.textContent=d.verdict;v.className="badge "+d.verdict;
-$("meta").textContent="  cage exit: "+(d.timed_out?"killed by time limit":"clean")+(d.used_fallback?"  |  AI gave no text, report built from log":"");
-const valid=new Set(d.events.map(e=>e.id));
+const verdict=typeof d.verdict==="string"?d.verdict:"INCONCLUSIVE";
+const status=typeof d.execution_status==="string"?d.execution_status:"UNKNOWN";
+const events=Array.isArray(d.events)?d.events:[];
+const findings=Array.isArray(d.findings)?d.findings:[];
+const report=typeof d.report==="string"?d.report:"No report was returned.";
+const v=$("verdict");v.textContent=verdict;v.className="badge "+verdict;
+$("execution-status").textContent="Execution: "+status;
+$("meta").textContent="  cage exit: "+(d.timed_out?"killed by time limit":"complete")+(d.used_fallback?"  |  AI gave no text, report built from log":"");
+$("diagnostic").textContent=(typeof d.diagnostic==="string"&&d.diagnostic)?d.diagnostic:"";
+const valid=new Set(events.map(e=>e.id));
 const F=$("findings");F.textContent="";
-if(!d.findings.length)F.appendChild(el("div","No suspicious behaviour logged.","mut"));
-d.findings.forEach(f=>{const r=el("div",undefined,"f");r.appendChild(el("span","- "+f.title+" "));r.appendChild(chips(f.evidence||[],valid));F.appendChild(r)});
+if(!findings.length)F.appendChild(el("div","No suspicious behaviour logged.","mut"));
+findings.forEach(f=>{const r=el("div",undefined,"f");r.appendChild(el("span","- "+String(f.title||"Finding")+" "));r.appendChild(chips(Array.isArray(f.evidence)?f.evidence:[],valid));F.appendChild(r)});
 const T=$("events");T.textContent="";
-d.events.forEach(e=>{const tr=document.createElement("tr");tr.dataset.id=e.id;
+events.forEach(e=>{const tr=document.createElement("tr");tr.dataset.id=e.id;
 [e.id,e.kind,e.detail].forEach(x=>tr.appendChild(el("td",String(x))));T.appendChild(tr)});
-if(!d.events.length){const tr=document.createElement("tr");tr.appendChild(el("td","No events logged","mut"));T.appendChild(tr)}
+if(!events.length){const tr=document.createElement("tr");tr.appendChild(el("td","No events logged","mut"));T.appendChild(tr)}
 const R=$("report");R.textContent="";const pre=el("pre");
-d.report.split(/(\[#\d+\])/).forEach(p=>{const m=p.match(/^\[#(\d+)\]$/);
+report.split(/(\[#\d+\])/).forEach(p=>{const m=p.match(/^\[#(\d+)\]$/);
 if(m){const i=+m[1];const c=el("span","#"+i,"chip"+(valid.has(i)?"":" bad"));c.onclick=()=>hl(i);pre.appendChild(c)}else pre.appendChild(document.createTextNode(p))});
 R.appendChild(pre);
-$("cites").textContent="Verified citations: "+(d.verified_citations.join(", ")||"none")+"  |  Invalid: "+(d.invalid_citations.join(", ")||"none");
+$("cites").textContent="Verified citations: "+((Array.isArray(d.verified_citations)?d.verified_citations:[]).join(", ")||"none")+"  |  Invalid: "+((Array.isArray(d.invalid_citations)?d.invalid_citations:[]).join(", ")||"none");
 }
 $("go").onclick=async()=>{
 $("err").textContent="";const b=$("go");b.disabled=true;b.textContent="Cage running...";
