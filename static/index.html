@@ -42,6 +42,11 @@ tr.hl{background:#26334f}.chip{background:#26334f;border:1px solid var(--acc);co
 <table><thead><tr><th>#</th><th>Kind</th><th>Detail</th></tr></thead><tbody id="events"></tbody></table></div>
 <div class="card"><b>4. AI analyst report</b> <span class="mut">(every [#n] is checked against the log)</span>
 <div id="report"></div><div class="mut" id="cites" style="margin-top:8px"></div></div>
+<div class="card" id="probe-card" style="display:none"><b>5. Agent probe</b> <span class="mut">(code written by the AI and run in the same cage; it does not change the verdict)</span><span class="mut" id="probe-meta"></span>
+<div class="mut" id="probe-goal" style="margin:6px 0"></div>
+<pre id="probe-code"></pre>
+<div class="mut" style="margin-top:8px">Probe output:</div>
+<pre id="probe-out"></pre></div>
 </div>
 <div id="err" style="color:var(--hi)"></div>
 </div>
@@ -57,7 +62,16 @@ function el(tag,txt,cls){const e=document.createElement(tag);if(txt!==undefined)
 function hl(id){document.querySelectorAll("#events tr").forEach(r=>r.classList.toggle("hl",r.dataset.id==id));
 const r=document.querySelector('#events tr[data-id="'+id+'"]');if(r)r.scrollIntoView({block:"nearest"})}
 function chips(ids,valid){const w=document.createElement("span");ids.forEach(i=>{const c=el("span","#"+i,"chip"+(valid.has(i)?"":" bad"));c.onclick=()=>hl(i);w.appendChild(c)});return w}
-function render(d){
+function renderProbe(p){
+var c=$("probe-card");
+if(!p||typeof p!=="object"){c.style.display="none";return}
+c.style.display="block";
+$("probe-meta").textContent="  status: "+String(p.status||"UNKNOWN")+(p.attempts?" | attempts: "+String(p.attempts):"");
+$("probe-goal").textContent=String(p.goal||"");
+$("probe-code").textContent=String(p.code||"(no code)");
+$("probe-out").textContent=String(p.stdout||p.diagnostic||"(no output)");
+}
+function render(d){renderProbe(d.agent_probe);
 $("out").style.display="block";
 const verdict=typeof d.verdict==="string"?d.verdict:"INCONCLUSIVE";
 const status=typeof d.execution_status==="string"?d.execution_status:"UNKNOWN";
