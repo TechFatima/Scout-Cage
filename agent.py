@@ -83,7 +83,7 @@ def investigate(path, use_probe=False):
     if use_probe and run.get("execution_status") != "DOCKER_FAILED":
         try:
             source = open(path, encoding="utf-8", errors="ignore").read()
-            probe = agent_probe(source, run["events"], chat_text)
+            probe = agent_probe(source, run["events"], lambda s, u: chat_text(s, u, 6000))
         except Exception:
             probe = None
 

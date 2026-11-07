@@ -66,11 +66,15 @@ python -m pytest -v
 
 Optional settings: `SCOUT_MODEL`, `RATE_PER_IP` (default 10 per 10 minutes), `RATE_DAILY` (default 200).
 
+## Agent-written probe (Pattern A)
+
+After the first run, the AI reads the sample's source and the logged events and writes one short Python probe (for example, to decode an obfuscated string). A policy gate checks it first: allowlisted imports only, and no exec, eval, open or double-underscore access. The probe then runs in the same cage, with the same limits and a 10 second timeout. If it fails or is rejected, the error is fed back to the AI for up to two more attempts. Its output is passed to the explanation and labelled (probe). The probe never changes the verdict, which is decided only from the sample's own run.
+
 ## Honest limitations
 
 - Python only; the monitor uses in-process Python audit hooks, so it covers only the events it hooks and a determined sample could evade or tamper with it. Docker isolation, not the monitor, is the security boundary.
 - LOW means "no monitored suspicious behavior", not "safe".
 - Docker shares the host kernel. A stronger isolation layer (gVisor or a throwaway VM per sample) would be the next step.
 - Citation checks confirm an event exists, not that the sentence fully matches it.
-- The AI explains results; it does not write or run code itself yet.
+- The probe gate is defense in depth only; the cage is the security boundary. A probe can fail or be skipped, and then the report is built without it.
 - HTTP only; per-IP rate limiting.

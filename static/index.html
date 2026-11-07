@@ -78,7 +78,7 @@ const status=typeof d.execution_status==="string"?d.execution_status:"UNKNOWN";
 const events=Array.isArray(d.events)?d.events:[];
 const findings=Array.isArray(d.findings)?d.findings:[];
 const report=typeof d.report==="string"?d.report:"No report was returned.";
-const v=$("verdict");v.textContent=verdict;v.className="badge "+verdict;
+const v=$("verdict");v.textContent=(verdict==="LOW"?"LOW (no monitored behavior observed)":verdict);v.className="badge "+verdict;
 $("execution-status").textContent="Execution: "+status;
 $("meta").textContent="  cage exit: "+(d.timed_out?"killed by time limit":"complete")+(d.used_fallback?"  |  AI gave no text, report built from log":"");
 $("diagnostic").textContent=(typeof d.diagnostic==="string"&&d.diagnostic)?d.diagnostic:"";
