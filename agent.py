@@ -4,6 +4,7 @@ from openai import OpenAI
 from sandbox.runner import run_sample
 from sandbox.analyze import analyze
 from probe import agent_probe
+from sandbox.static_scan import static_scan, cross_check
 
 load_dotenv(override=True)
 MODEL = os.environ.get("SCOUT_MODEL", "qwen3.8-flash-next")
@@ -101,6 +102,12 @@ def investigate(path, use_probe=False, goal=""):
         report = fallback_report(run["events"], analysis["findings"])
         used_fallback = True
 
+    try:
+        _src = open(path, encoding="utf-8", errors="ignore").read()
+        static = static_scan(_src)
+        cross = cross_check(static, run["events"], run.get("execution_status"))
+    except Exception:
+        static, cross = None, None
     valid = {e["id"] for e in run["events"]}
     cited = {int(x) for x in re.findall(r"\[#(\d+)\]", report)}
     return {
@@ -116,6 +123,8 @@ def investigate(path, use_probe=False, goal=""):
         "execution_status": run["execution_status"],
         "diagnostic": run["diagnostic"],
         "agent_probe": probe,
+        "static": static,
+        "cross_check": cross,
         "exit_code": run.get("exit_code"),
         "duration_s": run.get("duration_s"),
         "stderr": (run.get("stderr") or "")[-1500:],
