@@ -66,7 +66,7 @@ def ask_ai(events, findings, probe=None):
     return chat_text(SYSTEM, user)
 
 
-def investigate(path, use_probe=False):
+def investigate(path, use_probe=False, goal=""):
     run = run_sample(path)
     analysis = analyze(run["events"], run.get("execution_status"))
     injections = scan_injection(path)
@@ -83,7 +83,12 @@ def investigate(path, use_probe=False):
     if use_probe and run.get("execution_status") != "DOCKER_FAILED":
         try:
             source = open(path, encoding="utf-8", errors="ignore").read()
-            probe = agent_probe(source, run["events"], lambda s, u: chat_text(s, u, 6000))
+            probe = agent_probe(
+                source,
+                run["events"],
+                lambda s, u: chat_text(s, u, 6000),
+                goal=goal,
+            )
         except Exception:
             probe = None
 

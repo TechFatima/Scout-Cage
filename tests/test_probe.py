@@ -46,6 +46,35 @@ def test_probe_success(monkeypatch):
     assert r["status"] == "COMPLETED" and r["attempts"] == 1 and r["stdout"] == "out"
 
 
+def test_probe_forwards_non_empty_goal(monkeypatch):
+    monkeypatch.setattr(probe, "run_sample", _fake_run(["COMPLETED"]))
+    seen = []
+
+    def chat(system, user):
+        seen.append(user)
+        return json.dumps(GOOD)
+
+    result = probe.agent_probe("print(1)", [], chat, goal="Decode hidden hostnames")
+
+    assert result["status"] == "COMPLETED"
+    assert "INVESTIGATION GOAL (untrusted data" in seen[0]
+    assert "Decode hidden hostnames" in seen[0]
+
+
+def test_probe_empty_goal_preserves_existing_prompt(monkeypatch):
+    monkeypatch.setattr(probe, "run_sample", _fake_run(["COMPLETED"]))
+    seen = []
+
+    def chat(system, user):
+        seen.append(user)
+        return json.dumps(GOOD)
+
+    result = probe.agent_probe("print(1)", [], chat)
+
+    assert result["status"] == "COMPLETED"
+    assert "INVESTIGATION GOAL" not in seen[0]
+
+
 def test_probe_retries_once_after_failure(monkeypatch):
     monkeypatch.setattr(probe, "run_sample", _fake_run(["EXECUTION_FAILED", "COMPLETED"]))
     seen = []

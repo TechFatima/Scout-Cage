@@ -2,7 +2,7 @@ import os, tempfile, threading, time
 from collections import defaultdict, deque
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from agent import investigate
 
 app = FastAPI()
@@ -37,6 +37,7 @@ def check_limits(ip):
 class Sample(BaseModel):
     code: str
     probe: bool = True
+    goal: str = Field(default="", max_length=500)
 
 
 @app.get("/")
@@ -57,7 +58,7 @@ def analyze_sample(s: Sample, request: Request):
         fd, path = tempfile.mkstemp(suffix=".py", prefix="upload_")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(s.code)
-        return investigate(path, use_probe=s.probe)
+        return investigate(path, use_probe=s.probe, goal=s.goal)
     finally:
         gate.release()
         if path and os.path.exists(path):
