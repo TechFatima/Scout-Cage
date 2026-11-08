@@ -131,8 +131,44 @@ def static_scan(source):
     return {"indicators": found, "hidden": hidden, "parse_error": False}
 
 
+def static_risk(static):
+    """Assess source risk using static indicators only."""
+    if not isinstance(static, dict) or static.get("parse_error"):
+        return {
+            "level": "UNKNOWN",
+            "summary": "The source could not be parsed, so static risk is unknown.",
+            "indicators": [],
+        }
+    indicators = static.get("indicators", [])
+    high = [i for i in indicators if i.get("confidence") == "high"]
+    medium = [i for i in indicators if i.get("confidence") == "medium"]
+    if high:
+        level = "HIGH"
+    elif medium:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+    return {
+        "level": level,
+        "summary": (
+            "Static indicators suggest %s source risk; this describes code patterns, "
+            "not executed behavior." % level
+        ),
+        "indicators": [
+            {
+                "kind": i.get("kind"),
+                "title": i.get("title"),
+                "line": i.get("line"),
+                "confidence": i.get("confidence"),
+                "detail": i.get("detail", ""),
+            }
+            for i in indicators
+        ],
+    }
+
+
 def cross_check(static, events, execution_status=None):
-    """Compare what the code contains with what the cage observed."""
+    """Compare source indicators with unverified monitor reports."""
     kinds = {e.get("kind") for e in (events or []) if isinstance(e, dict)}
     observed, not_observed = [], []
     for cat, ev in (("network", {"network"}), ("process", {"process"}),
@@ -140,7 +176,18 @@ def cross_check(static, events, execution_status=None):
         highs = [i for i in static.get("indicators", []) if i["kind"] == cat and i["confidence"] == "high"]
         if not highs:
             continue
-        entry = {"kind": cat, "lines": sorted({i["line"] for i in highs})}
+        entry = {
+            "kind": cat,
+            "lines": sorted({i["line"] for i in highs}),
+            "evidence_status": (
+                "UNVERIFIED_RUNTIME_OBSERVATION"
+                if kinds & ev else "NO_MATCHING_REPORTED_OBSERVATION"
+            ),
+        }
         (observed if kinds & ev else not_observed).append(entry)
     return {"observed": observed, "not_observed": not_observed,
-            "complete": execution_status == "COMPLETED"}
+            "complete": execution_status == "COMPLETED",
+            "comparison_status": (
+                "INCOMPLETE" if execution_status != "COMPLETED"
+                else "REPORTED_OBSERVATIONS_ONLY"
+            )}

@@ -1,10 +1,14 @@
-def analyze(events, execution_status=None):
+def analyze(events, execution_status=None, telemetry_trusted=False):
     findings = []
 
     def add(kind, title, evs):
         if evs:
             findings.append({"kind": kind, "title": title,
-                             "evidence": [e["id"] for e in evs]})
+                             "evidence": [e["id"] for e in evs],
+                             "evidence_status": (
+                                 "AUTHENTICATED" if telemetry_trusted
+                                 else "UNVERIFIED_RUNTIME_OBSERVATION"
+                             )})
 
     env = [e for e in events if e["kind"] == "env_read"]
     files = [e for e in events if e["kind"] == "file_open"]
@@ -16,7 +20,10 @@ def analyze(events, execution_status=None):
     add("network", "Attempted network access (blocked by sandbox)", net)
     add("process", "Spawned other processes", proc)
 
-    if (env or files) and net:
+    if not telemetry_trusted:
+        # The sample shares the monitor process and can forge or suppress events.
+        verdict = "INCONCLUSIVE"
+    elif (env or files) and net:
         verdict = "HIGH"
     elif findings:
         verdict = "MEDIUM"
