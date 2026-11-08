@@ -10,9 +10,9 @@ Scout-Cage follows a security-first approach:
 
 **AI explains. Deterministic code decides. Observations inform. Humans decide.**
 
-**Live Demo:** http://139.84.145.204:8000/
+**Published demo endpoint:** http://139.84.145.204:8000/
 
-*The demo currently uses HTTP. Use harmless test scripts only. Never submit real malware, real credentials or sensitive information.*
+*This repository does not verify that the endpoint is currently available or document the VM's active overrides. The published endpoint uses HTTP. Use harmless test scripts only; never submit real malware, credentials or sensitive information.*
 
 ---
 
@@ -29,7 +29,7 @@ Running an unfamiliar Python script can expose a system to several risks:
 
 Reading source code alone does not establish what a program actually does. Running it directly on a developer's machine can also introduce unnecessary risk.
 
-Scout-Cage addresses this problem by combining static source analysis, Docker-based isolation, runtime monitoring, host-side evidence collection and AI-assisted investigation.
+Scout-Cage addresses this problem by combining static source analysis, Docker-based isolation, unverified runtime observations, best-effort host evidence collection and AI-assisted investigation.
 
 ## 2. The Solution
 
@@ -42,7 +42,7 @@ It distinguishes:
 1. **Static source indicators:** What potentially suspicious patterns are present in the submitted source code.
 2. **Execution status:** Whether the container completed, timed out, failed or encountered a resource-limit event.
 3. **Runtime observations:** What the in-process monitor reported during execution.
-4. **Host-side evidence:** What the Docker host and available cgroup information independently reported.
+4. **Host-established evidence:** What Docker inspection and available host-side collection independently recorded. Collection can be incomplete or unavailable.
 5. **AI investigation:** An explanation of the available findings and, when enabled, an additional generated probe.
 
 These results are presented together without allowing AI-generated conclusions to override the deterministic verdict.
@@ -77,6 +77,8 @@ The in-process Python monitor uses audit hooks and additional environment-variab
 Events are numbered so the AI report can reference them.
 
 **Important:** These are unverified observations. Because the monitor shares a process with the submitted sample, a determined sample may forge, suppress or tamper with observations.
+
+The monitor's lifecycle records are also in-process reports. They are not authenticated evidence that the sample actually performed a reported action.
 
 ### Host-Side Evidence Collection
 The runner collects available information independently of the sample process, including:
@@ -130,9 +132,7 @@ This validates the existence of an event ID, not the complete accuracy of the AI
 | Runtime monitoring | Python audit hooks |
 | AI integration | Vultr Serverless Inference |
 | AI client | OpenAI-compatible Python client |
-| Deployment | Vultr Cloud Compute |
 | Server | Uvicorn |
-| Operating system on VM | Ubuntu 24.04 |
 
 ### AI Model
 
@@ -158,7 +158,6 @@ flowchart TD
 
     API --> LIMIT["Input Validation, Rate Limiting and Concurrency Gate"]
 
-    LIMIT --> STATIC["AST Static Scanner"]
     LIMIT --> RUNNER["Docker Sandbox Runner"]
 
     RUNNER --> CAGE["Disposable Docker Container"]
@@ -166,10 +165,14 @@ flowchart TD
     MON -->|"Reported events on stderr"| RUNNER
 
     RUNNER --> HOST["Host Evidence Collection"]
-    STATIC --> ANALYZER["Deterministic Analysis"]
-    RUNNER --> ANALYZER
+    RUNNER --> ANALYZER["Deterministic Runtime Analysis"]
+    RUNNER --> STATIC["AST Static Scanner"]
+    STATIC --> CROSS["Static/Runtime Cross-Check"]
+    RUNNER --> CROSS
 
     ANALYZER --> RESULT["Structured Analysis Result"]
+    STATIC --> RESULT
+    CROSS --> RESULT
 
     RESULT --> AGENT["AI Investigation Layer"]
     AGENT <--> VULTR["Vultr Serverless Inference"]
@@ -189,14 +192,13 @@ flowchart TD
 
 1. The user submits Python source code and an optional investigation goal.
 2. The backend validates the input, applies request limits and checks concurrency.
-3. The static scanner examines the source without executing it.
-4. The runner creates a disposable Docker container with configured isolation restrictions.
-5. The monitor reports selected runtime observations.
-6. The host collects available Docker and resource evidence.
-7. The deterministic analyzer calculates the runtime verdict using the telemetry trust state.
-8. The AI investigation layer receives the relevant source indicators and reported observations.
-9. If enabled, the AI generates a probe which passes through a policy check before execution in a separate disposable container.
-10. The AI report is generated, citations are checked, and the structured result is returned to the frontend.
+3. The runner creates a disposable Docker container with configured isolation restrictions.
+4. The monitor reports selected runtime observations, while the host collects available Docker and resource evidence.
+5. The deterministic analyzer calculates the runtime verdict using the telemetry trust state.
+6. The static scanner examines the source without executing it; static findings are then compared with reported runtime observations.
+7. Prompt-injection source patterns are scanned and the AI investigation layer receives relevant findings and reported observations.
+8. If enabled and the sample did not encounter a Docker failure, the AI generates a probe which passes through a policy check before execution in a separate disposable container.
+9. The AI report is generated, citations are checked, and the structured result is returned to the frontend.
 
 ---
 
@@ -257,6 +259,15 @@ Static risk describes suspicious patterns found in the source code. It does not 
 
 The scanner uses selected AST patterns. It is not a complete malware detector and cannot identify every possible malicious technique.
 
+**LOW does not mean safe.** It means this scanner did not identify supported suspicious patterns in the source it could analyze.
+
+### Evidence Classes
+
+- **Static source indicators** describe patterns found by source analysis. They do not prove that the code ran.
+- **Unverified runtime observations** come from the in-process monitor and may be forged, suppressed or incomplete.
+- **Host-established evidence** comes from Docker or host-side collection and is independent of the sample process, but collection can still be partial.
+- **Unknown or unavailable evidence** means the system could not establish the relevant fact. It is not evidence that an event did not occur.
+
 ### Runtime Verdict
 
 The runtime verdict is intentionally conservative.
@@ -303,7 +314,7 @@ The runner uses Docker inspection and available host-side cgroup information to 
 | Network | UNKNOWN; in-process network observations are untrusted. |
 | Execution time | STOPPED when the host runner enforces the timeout; otherwise UNKNOWN. |
 | Memory | Docker OOM information and available cgroup counters. |
-| Processes | Available cgroup PID-limit counters. |
+| Processes | cgroup PID-limit event counters when complete; otherwise UNKNOWN. |
 | Scratch disk | UNKNOWN; independent host-side scratch-disk evidence is not implemented. |
 
 A cgroup snapshot is collected on a best-effort basis.
@@ -354,9 +365,9 @@ The policy gate is defense in depth. Docker containment remains the actual execu
 
 ### Important Current Limitation
 
-The current implementation automatically generates and executes the probe when probing is enabled. There is no separate user approval stage before execution.
+The current implementation automatically generates and executes the probe when probing is enabled. There is no separate user approval stage before execution. A probe runs in a separate disposable Docker container; policy acceptance alone is not evidence that it executed.
 
-The probe result includes the final attempt's details and an attempt count, but a complete structured history of every individual attempt is not yet preserved.
+The probe response preserves each generation cycle in `attempt_log`, including empty or malformed responses, policy decisions, execution-attempt state, confirmed-execution evidence when available, and sanitized execution outcomes. `attempts` counts generation cycles. Missing Docker start evidence remains unknown rather than being presented as confirmed execution.
 
 The probe does not determine or override the main sample's runtime verdict.
 
@@ -379,13 +390,14 @@ Current interface functionality includes:
 - Static risk and source indicators.
 - Static-to-runtime observation comparison.
 - Resource containment receipt.
-- Investigation steps.
-- Runtime evidence timeline.
+- Backend-provided investigation trace with stage statuses and evidence classifications.
+- Individual probe attempts, including policy decisions and execution evidence state.
+- Separate displays for static source indicators and unverified runtime observations.
 - AI analyst report.
 - Citation navigation and validation.
 - AI probe status, generated code and output.
 
-The investigation steps are presented after the response is received; they are not a live execution progress stream or a complete per-attempt trace.
+The investigation trace is presented after the response is received; it is not a live execution progress stream. Request validation, rate limiting and the concurrency gate happen in the API layer before `investigate()` and therefore are not stages in that trace. Older or incomplete responses are rendered with unavailable or unknown states where evidence is absent.
 
 ---
 
@@ -418,32 +430,22 @@ Example:
 
 ### Backend Request Controls
 
-- Maximum submitted source size: 20 KB.
-- Per-IP request rate limiting.
-- Daily request limiting.
+- Maximum submitted source size: 20,000 characters (the server checks Python string length).
+- Per-IP request rate limit: repository default 10 requests per 10 minutes.
+- Daily request limit: repository default 200 requests per process-local day.
 - Maximum two concurrent analysis operations.
 
-The rate limits can be configured using environment variables.
+Rate limits can be overridden with `RATE_PER_IP` and `RATE_DAILY`. The counters are in-memory and process-local; restarting the server clears them. The checked-in repository does not include deployment configuration that verifies whether a live VM overrides these defaults.
 
 ---
 
 ## 12. Deployment on Vultr
 
-The application is deployed on a Vultr Cloud Compute VM running Ubuntu 24.04.
-
-The VM hosts:
-
-- FastAPI backend.
-- Docker engine.
-- Disposable sandbox containers.
-- Systemd-managed application service.
-- Vultr Serverless Inference integration.
-
-The public demonstration endpoint is:
+The project has a published demonstration endpoint:
 
 http://139.84.145.204:8000/
 
-The current deployment uses HTTP rather than HTTPS. This is a demonstration endpoint and should not be used to submit sensitive information.
+The endpoint uses HTTP in the README's published URL. Current availability, VM operating system, service manager, and live environment overrides are not verifiable from the repository because deployment manifests and host configuration are not included. Do not submit sensitive information.
 
 ### Vultr Integration
 
@@ -459,10 +461,10 @@ The inference API key is stored in the backend environment and is not passed int
 
 ### Prerequisites
 
-- Python 3.10 or newer.
+- Python 3.10 or newer (recommended; application dependencies are listed in `requirements.txt`).
 - Docker installed and running.
 - Internet access to download the Docker image and use Vultr Serverless Inference.
-- A Vultr Serverless Inference API key for AI functionality.
+- A Vultr Serverless Inference API key for AI reports and probe generation (without it, AI requests fail and the backend can produce its deterministic fallback report).
 
 ### Setup
 
@@ -514,13 +516,15 @@ Install it separately:
 python -m pip install pytest
 ```
 
-Run:
+Run the repository's unit and integration tests from the `tests` directory:
 
 ```powershell
-python -m pytest -v
+python -m pytest tests -q
 ```
 
 Some tests require a working Docker daemon and the sandbox image.
+
+The root-level `test_inference.py` is a live inference smoke script, not a unit test: running it can make a real Vultr inference request and consume API quota. It is not included in the command above.
 
 ---
 
@@ -533,12 +537,7 @@ Some tests require a working Docker daemon and the sandbox image.
 | `RATE_PER_IP` | Maximum requests per IP per 10 minutes | `10` |
 | `RATE_DAILY` | Maximum daily requests | `200` |
 
-The deployed VM currently uses environment overrides of:
-
-- 15 requests per IP per 10 minutes.
-- 500 requests per day.
-
-Local fallback defaults and deployed environment overrides are intentionally different.
+Rate limits use in-memory counters in each server process. The daily counter resets when the process-local date changes; it is not a durable or cross-instance quota. No live VM override values can be confirmed from the checked-in files.
 
 ---
 
@@ -555,7 +554,7 @@ Current limitations include:
 5. **Cgroup evidence:** Collection depends on host environment, cgroup version, path availability and container lifetime.
 6. **Resource reporting:** Network and scratch-disk outcomes do not currently have complete independent host-side evidence.
 7. **AI reliability:** AI explanations and generated probes may be incomplete or incorrect. They do not establish security facts.
-8. **Probe history:** The complete per-attempt probe trace is not yet preserved.
+8. **Evidence availability:** Docker and cgroup evidence are best-effort. Missing, incomplete or contradictory evidence can leave a stage unavailable or inconclusive.
 9. **Human approval:** The current probe execution flow does not include a separate user approval stage.
 10. **Citation validation:** Citation checks verify event-ID existence, not whether the AI's explanation accurately represents the event.
 
@@ -582,29 +581,20 @@ This section describes the implementation state and planned improvements. Planne
 - AI-generated goal-aware probe.
 - Probe policy validation and execution.
 - AI report generation and citation-ID validation.
-- Frontend goal input, evidence display and investigation steps.
+- Structured backend investigation trace with evidence classifications and stage outcomes.
+- Per-cycle probe attempt history, including policy and execution evidence.
+- Frontend rendering of backend trace stages, attempt history, static findings and runtime observations.
 
-### Planned — Milestone 2
+### Remaining work and limitations
 
-**A. Truthful Investigation Trace**
-- Preserve each AI probe attempt separately.
-- Record proposed code, policy decision, execution status, exit code, duration and result.
-- Avoid overwriting previous attempts.
-- Render the actual attempt history in the frontend.
-
-**B. Improved Frontend Investigation Timeline**
-- Display real backend investigation events.
-- Clearly distinguish completed, rejected, failed and skipped stages.
-- Avoid presenting inferred steps as a detailed execution trace.
-
-**C. User Approval Before Probe Execution**
+**A. User Approval Before Probe Execution**
 - Separate probe generation from execution.
 - Present generated code for user review.
 - Require explicit user approval before executing generated code.
 - Revalidate the probe on the backend before execution.
 - Preserve the existing sandbox and verdict security boundaries.
 
-**D. Evidence Trust Improvements**
+**B. Evidence Trust Improvements**
 - Investigate a trustworthy out-of-process telemetry architecture.
 - Validate cgroup v2 collection on the Linux VM.
 - Preserve INCONCLUSIVE when evidence cannot establish a trustworthy conclusion.

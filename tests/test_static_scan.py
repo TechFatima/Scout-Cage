@@ -104,13 +104,12 @@ def test_frontend_uses_replacement_low_verdict_wording():
         "No monitored behavior was observed, but the code contains capabilities "
         "the cage did not see run (see the static scan). Treat this as unproven, not safe."
     )
-    new = (
-        "No corresponding unverified monitor observation was reported for some source "
-        "indicators. This does not establish whether those capabilities executed. "
-        "Treat the result as unproven, not safe."
+    current = (
+        "A LOW result does not prove the code is safe; it only indicates that no "
+        "authenticated runtime finding was established."
     )
     assert old not in source
-    assert new in source
+    assert current in source
 
 
 def test_frontend_uses_conservative_evidence_wording():
@@ -119,4 +118,7 @@ def test_frontend_uses_conservative_evidence_wording():
     assert "The AI explains unverified runtime observations and static source indicators" in source
     assert "A LOW result does not prove the code is safe" in source
     assert "runtime verdict remains INCONCLUSIVE" in source
-    assert "Written by the AI from unverified observations and static source indicators." in source
+    assert "Host-established evidence" in source
+    assert '"UNVERIFIED_RUNTIME_OBSERVATION"?"Unverified runtime observation"' in source
+    assert '"UNKNOWN_OR_UNAVAILABLE"?"Unknown or unavailable evidence"' in source
+    assert '"Evidence: "+String(item.evidence_type)' in source

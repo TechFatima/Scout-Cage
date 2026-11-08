@@ -45,6 +45,7 @@ def test_missing_docker_is_docker_failure(monkeypatch):
     assert r["execution_status"] == "DOCKER_FAILED"
     assert r["diagnostic"] == "Docker execution could not be started."
     assert r["exit_code"] == -1
+    assert r["docker_failure_phase"] == "STARTUP"
 
 
 def test_network_is_blocked():
@@ -115,6 +116,7 @@ def test_malformed_lifecycle_telemetry_is_monitor_failure(monkeypatch):
     monkeypatch.setattr("sandbox.runner.uuid.uuid4", lambda: type("U", (), {"hex": "token"})())
     r = run_sample("samples/hello.py")
     assert r["execution_status"] == "MONITOR_FAILED"
+    assert r["monitor_records_malformed"] is True
 
 
 def test_container_is_inspected_before_cleanup(monkeypatch):
@@ -182,6 +184,7 @@ def test_cleanup_failure_is_reported(monkeypatch):
         for item in result["host_evidence"]
     )
     assert result["execution_status"] == "DOCKER_FAILED"
+    assert result["docker_failure_phase"] == "CLEANUP"
 
 
 def test_host_oom_precedes_incomplete_monitor_telemetry(monkeypatch):

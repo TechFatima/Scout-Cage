@@ -355,6 +355,7 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
     timed_out = False
     execution_status = "COMPLETED"
     diagnostic = "Sample completed successfully."
+    docker_failure_phase = None
     inspect = None
     inspect_error = None
     cgroup_before = None
@@ -397,6 +398,7 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
     except OSError:
         stdout, stderr, code = "", "", -1
         execution_status = "DOCKER_FAILED"
+        docker_failure_phase = "STARTUP"
         diagnostic = "Docker execution could not be started."
     inspect, inspect_error = _docker_inspect(name)
     container_id = inspect.get("Id") if inspect else None
@@ -455,6 +457,7 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
         ))
         if execution_status == "COMPLETED":
             execution_status = "DOCKER_FAILED"
+            docker_failure_phase = "CLEANUP"
             diagnostic = "Docker cleanup could not be confirmed."
     trusted_evidence = {
         "timeout_triggered": timed_out,
@@ -484,6 +487,7 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
             diagnostic = "Docker/cgroup evidence reported an OOM termination."
         elif _is_docker_failure(stderr, code):
             execution_status = "DOCKER_FAILED"
+            docker_failure_phase = "RUNNER"
             diagnostic = "Docker could not start or complete the container."
         elif cgroup_diff.get("pids_events", {}).get("max", 0) > 0:
             execution_status = "RESOURCE_LIMIT_REACHED"
@@ -510,8 +514,10 @@ def run_sample(script_path, timeout=20, memory="256m", cpus="0.5"):
         "timeout_seconds": timeout,
         "duration_s": round(time.time() - start, 2),
         "execution_status": execution_status,
+        "docker_failure_phase": docker_failure_phase,
         "diagnostic": diagnostic,
         "monitor_lifecycle": lifecycle,
+        "monitor_records_malformed": malformed,
         "host_evidence": host_evidence,
         "telemetry_trusted": False,
         "resource_outcomes": classify_resource_outcomes(
