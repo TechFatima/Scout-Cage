@@ -28,7 +28,7 @@ PLAN_SYSTEM = (
     "no secrets. Do not run or import the sample. Allowed imports: re, json, "
     "base64, binascii, codecs, string, math, ast, hashlib, zlib, textwrap, "
     "itertools, collections, struct, html, urllib.parse. Do not use exec, eval, "
-    "open, getattr or double-underscore names. Print a short result. "
+    "open, getattr or double-underscore names. Your code MUST read SAMPLE_SOURCE and print a result computed from it; never print a fixed conclusion. "
     'Reply with JSON only: {"goal": "<one sentence>", "code": "<python code>"}'
 )
 
@@ -81,6 +81,8 @@ def policy_check(code):
             return False, "dunder attribute not allowed: " + node.attr
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             return False, "dunder name not allowed: " + node.id
+    if not any(isinstance(n, ast.Name) and n.id == "SAMPLE_SOURCE" for n in ast.walk(tree)):
+        return False, "the probe must read SAMPLE_SOURCE; printing a fixed conclusion proves nothing"
     return True, "ok"
 
 

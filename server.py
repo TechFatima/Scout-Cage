@@ -36,6 +36,7 @@ def check_limits(ip):
 
 class Sample(BaseModel):
     code: str
+    probe: bool = True
 
 
 @app.get("/")
@@ -56,7 +57,7 @@ def analyze_sample(s: Sample, request: Request):
         fd, path = tempfile.mkstemp(suffix=".py", prefix="upload_")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(s.code)
-        return investigate(path, use_probe=True)
+        return investigate(path, use_probe=s.probe)
     finally:
         gate.release()
         if path and os.path.exists(path):

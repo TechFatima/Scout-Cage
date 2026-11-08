@@ -2,7 +2,7 @@ import json
 import probe
 
 FENCE = chr(96) * 3
-GOOD = {"goal": "decode", "code": "import base64\nprint(base64.b64decode('aGk=').decode())"}
+GOOD = {"goal": "decode", "code": "import base64\nprint(len(SAMPLE_SOURCE), base64.b64decode('aGk=').decode())"}
 
 
 def test_parse_plain_json():
@@ -72,3 +72,8 @@ def test_probe_policy_rejection_never_runs(monkeypatch):
 def test_probe_skipped_when_ai_returns_nothing():
     r = probe.agent_probe("print(1)", [], lambda s, u: "")
     assert r["status"] == "SKIPPED"
+
+
+def test_policy_rejects_probe_that_ignores_the_sample():
+    ok, why = probe.policy_check("print('this is malware')")
+    assert ok is False and "SAMPLE_SOURCE" in why
