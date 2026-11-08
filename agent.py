@@ -111,6 +111,9 @@ def investigate(path, use_probe=False):
         "execution_status": run["execution_status"],
         "diagnostic": run["diagnostic"],
         "agent_probe": probe,
+        "exit_code": run.get("exit_code"),
+        "duration_s": run.get("duration_s"),
+        "stderr": (run.get("stderr") or "")[-1500:],
     }
 
 
